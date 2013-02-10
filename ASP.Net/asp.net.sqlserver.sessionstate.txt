@@ -1,0 +1,80 @@
+---------------------------------------------------------------------------------------------------
+AUTHOR: Ralph Willgoss
+  DATE: 5th September 2008
+  NOTE: Scripts to help calculate stats for the every Session being stored in SQL Session state.
+        If you have a number of different apps using the same SQL server, your data might be skewed.
+
+  TODO: Might not be worth storing the Short statistics, since they tend to be the same all the time
+---------------------------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------------------------
+INSTALL SESSION STATE AND CONFIG SYNTAX
+---------------------------------------------------------------------------------------------------
+Aspnet_regsql.exe -ssadd -E -S machinename -sstype c -d StateDBName
+
+<sessionState mode="SQLServer" allowCustomSqlDatabase="true" sqlConnectionString="Data Source=source, 1433; Initial Catalog= ; user id= ; password= " cookieless="false" timeout="5"/>
+<sessionState mode="SQLServer" allowCustomSqlDatabase="true" sqlConnectionString="Data Source=source; Initial Catalog= ; user id= ; password= " cookieless="false" timeout="5"/>
+
+Mini FAQ
+- If connecting to a remote server for session state, ensure that the port is present in the connection string, otherwise you will get an exception.
+
+---------------------------------------------------------------------------------------------------
+CreateSessionDataTable.sql 
+---------------------------------------------------------------------------------------------------
+GO
+SET QUOTED_IDENTIFIER OFF
+GO
+SET ANSI_NULLS ON
+GO
+
+IF EXISTS (SELECT * FROM dbo.sysobjects WHERE id = object_id(N'[dbo].[INGSessionData]')
+                                          AND OBJECTPROPERTY(id, N'IsUserTable') = 1)
+	DROP TABLE [dbo].[SessionData]
+GO
+
+CREATE TABLE [dbo].[SessionData] (
+    [SampleId] [int] IDENTITY (1, 1) NOT NULL ,
+    [SampleDate] [datetime] NOT NULL ,
+    [NumberOfSessions] [int] NOT NULL ,
+    [SessionItemShortMinSize] [int] NOT NULL ,
+    [SessionItemShortMaxSize] [int] NOT NULL ,
+    [SessionItemShortAverageSize] [int] NOT NULL ,
+    [SessionItemLongMinSize] [int] NOT NULL ,
+    [SessionItemLongMaxSize] [int] NOT NULL ,
+    [SessionItemLongAverageSize] [int] NOT NULL
+) ON [PRIMARY]
+GO
+
+---------------------------------------------------------------------------------------------------
+CreateSampleSessionDataStoredProc.sql 
+---------------------------------------------------------------------------------------------------
+SET QUOTED_IDENTIFIER ON
+GO
+SET ANSI_NULLS OFF
+GO
+IF EXISTS (SELECT * FROM dbo.sysobjects WHERE id = object_id(N'[dbo].[SampleSessionData]')
+                                          AND OBJECTPROPERTY(id, N'IsProcedure') = 1)
+	DROP PROCEDURE [dbo].[SampleSessionData]
+GO
+
+CREATE PROCEDURE dbo.SampleSessionData
+AS
+INSERT INTO SessionData(
+				SampleDate,
+				NumberOfSessions,
+				SessionItemShortMinSize,
+				SessionItemShortMaxSize,
+				SessionItemShortAverageSize,
+				SessionItemLongMinSize,
+				SessionItemLongMaxSize,
+				SessionItemLongAverageSize
+				)
+SELECT GETDATE() AS SampleDate,
+       COUNT(*) AS NumberOfSessions,
+       MIN(ISNULL(DATALENGTH(SessionItemShort),0)) AS SessionItemShortMinSize,
+       MAX(ISNULL(DATALENGTH(SessionItemShort),0)) AS SessionItemShortMaxSize,
+       AVG(ISNULL(DATALENGTH(SessionItemShort),0)) AS SessionItemShortAverageSize,
+       MIN(ISNULL(DATALENGTH(SessionItemLong),0)) AS SessionItemLongMinSize,
+       MAX(ISNULL(DATALENGTH(SessionItemLong),0)) AS SessionItemLongMaxSize,
+       AVG(ISNULL(DATALENGTH(SessionItemLong),0)) AS SessionItemLongAverageSize
+FROM ASPStateTempSessions
